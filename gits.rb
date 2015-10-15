@@ -49,7 +49,8 @@ end
 
 class Configurator
   def perform_first_configuration
-    new_config_file = create_file
+    create_dir $config_file_path
+    new_config_file = File.new($config_file_path, 'w')
     new_config_file.write gather_essential_knowledge.to_yaml
     new_config_file.close
     abort
@@ -69,12 +70,11 @@ class Configurator
   end
 
 private
-  def create_file
-    dir = File.dirname($config_file_path)
+  def create_dir path
+    dir = File.dirname(path)
     unless File.directory?(dir)
       FileUtils.mkdir_p(dir)
     end
-    File.new($config_file_path, 'w')
   end
 
   def gather_essential_knowledge
@@ -94,9 +94,24 @@ private
     puts "You're git commands will be synchronized between your local repo and that one on remote host:"
     puts "#{data['username']}@#{data['hostname']}:#{data['host_repo_dir']}"
     puts "Your local git repo's directory was stored as: #{data['local_repo_dir']}"
+
+    create_fish_shell_function
     puts "Configuration completed! From now you can use the script correctly.".green
 
     return data
+  end
+
+  def create_fish_shell_function
+    puts "Are you want to create fish shell function \"gits\"? [y/n]"
+    answer = $stdin.gets.chomp
+    if answer == "y"
+      script_path = FileUtils.pwd + "/" + File.basename(__FILE__)
+      fish_function_file_path = Dir.home + "/.config/fish/functions/gits.fish"
+      create_dir fish_function_file_path
+      new_fish_func_file = File.new(fish_function_file_path, 'w')
+      new_fish_func_file.write "function gits\n\t#{script_path} $argv\nend\n"
+      new_fish_func_file.close
+    end
   end
 end
 
@@ -130,7 +145,7 @@ private
     opts.on("-h HOSTNAME", "--hostname HOSTNAME", String, "Hostname of Server") { |v| @hostname = v }
     opts.on("-u SSH USERNAME", "--username SSH USERNAME", String, "SSH Username of Server") { |v| @username = v }
     opts.on("-b BRANCH", "--branch BRANCH", String, "Branch which will be checkouted") { |v| @branch = v }
-    opts.on("-r", "--reconfigure", String, "Branch which will be checkouted") { @reconfiguration_needed = true }
+    opts.on("-r", "--reconfigure", String, "Reconfiguration will be started") { @reconfiguration_needed = true }
     opts.on("-d DEBUG", "--debug DEBUG", String, "Debug level for ssh connection (DEBUG=fatal|error|warn|info|debug)") { |v| @debug_lvl = v }
     begin
       opts.parse!(@arguments)
