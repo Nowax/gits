@@ -13,6 +13,7 @@ end
 gem_available? 'net-ssh'
 gem_available? 'OptionParser'
 gem_available? 'fileutils'
+gem_available? 'rainbow'
 gem_available? 'colorize'
 
 require 'rubygems'
@@ -20,9 +21,12 @@ require 'net/ssh'
 require 'optparse'
 require 'fileutils'
 require 'yaml'
+require 'rainbow'
 require 'colorize'
 
 class ConfigLoader
+  $config_file_path = Dir.home + "/.gitsync/config.yml"
+
   def initialize
     load_config_data
   end
@@ -34,28 +38,43 @@ class ConfigLoader
 private
 
   def load_config_data
-    config_file_path = Dir.home + "/.gitsync/config.yml"
     begin
-      config_file_contents = File.read(config_file_path)
+      config_file_contents = File.read($config_file_path)
       @config_data = YAML.load(config_file_contents)
     rescue Errno::ENOENT
-      perform_first_configuration config_file_path
-      abort
+      Configurator.new.perform_first_configuration
+    end
+  end
+end
+
+class Configurator
+  def perform_first_configuration
+    new_config_file = create_file
+    new_config_file.write gather_essential_knowledge.to_yaml
+    new_config_file.close
+    abort
+  end
+
+  def perform_reconfiguration
+    puts Rainbow("Are you sure you want to remove current configuration? [yes/no]").underline.bg(:red)
+
+    answer = $stdin.gets.chomp
+    if answer == "yes"
+      puts "Starting reconfiguration..."
+      FileUtils.remove_file($config_file_path)
+      perform_first_configuration
+    else
+      puts "Uff! Thank's God... Returning to normal work."
     end
   end
 
-  def perform_first_configuration config_file_path
-    new_config_file = create_file config_file_path
-    new_config_file.write gather_essential_knowledge.to_yaml
-    new_config_file.close
-  end
-
-  def create_file path
-    dir = File.dirname(path)
+private
+  def create_file
+    dir = File.dirname($config_file_path)
     unless File.directory?(dir)
       FileUtils.mkdir_p(dir)
     end
-    File.new(path, 'w')
+    File.new($config_file_path, 'w')
   end
 
   def gather_essential_knowledge
@@ -86,13 +105,15 @@ class Gits
     load_configuration
   end
 
-  def main argv
+  def process_command argv
     @arguments = argv
     @debug_lvl = "fatal"
     @supported_commands = ["checkout", "fetch"]
 
     retrieve_options
     match_command
+
+    Configurator.new.perform_reconfiguration if @reconfiguration_needed
 
     unless @command.nil?
       run_command_locally
@@ -109,6 +130,7 @@ private
     opts.on("-h HOSTNAME", "--hostname HOSTNAME", String, "Hostname of Server") { |v| @hostname = v }
     opts.on("-u SSH USERNAME", "--username SSH USERNAME", String, "SSH Username of Server") { |v| @username = v }
     opts.on("-b BRANCH", "--branch BRANCH", String, "Branch which will be checkouted") { |v| @branch = v }
+    opts.on("-r", "--reconfigure", String, "Branch which will be checkouted") { @reconfiguration_needed = true }
     opts.on("-d DEBUG", "--debug DEBUG", String, "Debug level for ssh connection (DEBUG=fatal|error|warn|info|debug)") { |v| @debug_lvl = v }
     begin
       opts.parse!(@arguments)
@@ -143,9 +165,7 @@ private
   end
 
   def command_info location
-    print "Running command: ".green
-    print "#{@command}".yellow
-    puts " #{location}... ".green
+    puts "Running command: ".green + "#{@command}".yellow + " #{location}... ".green
   end
 
   def load_configuration
@@ -160,5 +180,5 @@ end
 ###########################################################
 ################### main program ##########################
 
-Gits.new.main(ARGV)
+Gits.new.process_command(ARGV)
 
