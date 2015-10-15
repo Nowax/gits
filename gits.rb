@@ -1,5 +1,20 @@
 #!/usr/bin/env ruby
 
+def gem_available?(name)
+  begin
+    gem name
+  rescue LoadError
+    puts "Installing missing gem (#{name})"
+    system("gem install #{name}")
+    Gem.clear_paths
+  end
+end
+
+gem_available? 'net-ssh'
+gem_available? 'OptionParser'
+gem_available? 'fileutils'
+gem_available? 'colorize'
+
 require 'rubygems'
 require 'net/ssh'
 require 'optparse'
